@@ -338,7 +338,7 @@ fn select_tv(deadline: Instant, max: Duration) -> libc::timeval {
 fn timeval_from_duration(d: Duration) -> libc::timeval {
     libc::timeval {
         tv_sec: d.as_secs().min(1) as libc::c_long,
-        tv_usec: (d.subsec_micros() % 1_000_000) as libc::c_long,
+        tv_usec: (d.subsec_micros() % 1_000_000) as _,
     }
 }
 
@@ -357,7 +357,7 @@ fn select_fds(max_fd: i32, fds: &mut libc::fd_set, tv: libc::timeval) -> i32 {
         if sel >= 0 {
             return sel;
         }
-        let errno = unsafe { *libc::__errno_location() };
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EINVAL);
         if errno != libc::EINTR {
             return sel;
         }

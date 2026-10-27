@@ -884,8 +884,8 @@ pub fn run_pty_daemon_shell(
             &raw mut master_pty,
             &raw mut slave_pty,
             std::ptr::null_mut(),
-            std::ptr::null(),
-            &raw const ws,
+            std::ptr::null_mut(),
+            &raw mut ws,
         )
     };
     if ret != 0 {
@@ -916,7 +916,7 @@ pub fn run_pty_daemon_shell(
             // runs if exec failed.
             unsafe {
                 libc::setsid();
-                libc::ioctl(slave_pty, libc::TIOCSCTTY, 0);
+                libc::ioctl(slave_pty, libc::TIOCSCTTY as libc::c_ulong, 0);
                 libc::dup2(slave_pty, 0);
                 libc::dup2(slave_pty, 1);
                 libc::dup2(slave_pty, 2);

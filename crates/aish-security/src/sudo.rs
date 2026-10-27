@@ -235,15 +235,9 @@ fn lookup_group_by_name(name: &str) -> Option<u32> {
 }
 
 fn empty_passwd() -> libc::passwd {
-    libc::passwd {
-        pw_name: std::ptr::null_mut(),
-        pw_passwd: std::ptr::null_mut(),
-        pw_uid: 0,
-        pw_gid: 0,
-        pw_gecos: std::ptr::null_mut(),
-        pw_dir: std::ptr::null_mut(),
-        pw_shell: std::ptr::null_mut(),
-    }
+    // `libc::passwd` has platform-specific fields (macOS adds pw_change,
+    // pw_class, pw_expire), so use zeroed rather than a struct literal.
+    unsafe { std::mem::zeroed() }
 }
 
 fn skip_ws(s: &str, mut index: usize) -> usize {

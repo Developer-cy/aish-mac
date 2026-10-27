@@ -87,32 +87,45 @@ pub(crate) struct SystemWorkerRuntime;
 
 impl WorkerRuntime for SystemWorkerRuntime {
     fn prepare_mount_namespace(&self) -> Result<(), SandboxError> {
-        let unshare_rc = unsafe { libc::unshare(libc::CLONE_NEWNS) };
-        if unshare_rc != 0 {
-            return Err(SandboxError::with_details(
-                SandboxReason::SandboxUnavailable,
-                std::io::Error::last_os_error().to_string(),
-            ));
-        }
+        #[cfg(target_os = "linux")]
+        {
+            let unshare_rc = unsafe { libc::unshare(libc::CLONE_NEWNS) };
+            if unshare_rc != 0 {
+                return Err(SandboxError::with_details(
+                    SandboxReason::SandboxUnavailable,
+                    std::io::Error::last_os_error().to_string(),
+                ));
+            }
 
-        let root = std::ffi::CString::new("/").expect("static path");
-        let remount_rc = unsafe {
-            libc::mount(
-                std::ptr::null(),
-                root.as_ptr(),
-                std::ptr::null(),
-                (libc::MS_REC | libc::MS_PRIVATE) as libc::c_ulong,
-                std::ptr::null(),
-            )
-        };
-        if remount_rc != 0 {
-            return Err(SandboxError::with_details(
-                SandboxReason::SandboxUnavailable,
-                std::io::Error::last_os_error().to_string(),
-            ));
-        }
+            let root = std::ffi::CString::new("/").expect("static path");
+            let remount_rc = unsafe {
+                libc::mount(
+                    std::ptr::null(),
+                    root.as_ptr(),
+                    std::ptr::null(),
+                    (libc::MS_REC | libc::MS_PRIVATE) as libc::c_ulong,
+                    std::ptr::null(),
+                )
+            };
+            if remount_rc != 0 {
+                return Err(SandboxError::with_details(
+                    SandboxReason::SandboxUnavailable,
+                    std::io::Error::last_os_error().to_string(),
+                ));
+            }
 
-        Ok(())
+            Ok(())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            // Mount namespace isolation (CLONE_NEWNS) is Linux-only.
+            // On macOS this is unavailable; the sandbox degrades via
+            // SandboxUnavailable so the caller falls back to policy rules.
+            Err(SandboxError::with_details(
+                SandboxReason::SandboxUnavailable,
+                "mount namespace isolation is not supported on this platform".to_string(),
+            ))
+        }
     }
 
     fn host_submounts(&self, repo_root: &Path) -> Vec<PathBuf> {
@@ -513,15 +526,9 @@ fn payload_home(payload_identity: PayloadIdentity) -> String {
 }
 
 fn resolve_user_home(uid: u32) -> Option<String> {
-    let mut pwd = libc::passwd {
-        pw_name: std::ptr::null_mut(),
-        pw_passwd: std::ptr::null_mut(),
-        pw_uid: 0,
-        pw_gid: 0,
-        pw_gecos: std::ptr::null_mut(),
-        pw_dir: std::ptr::null_mut(),
-        pw_shell: std::ptr::null_mut(),
-    };
+    // `libc::passwd` has platform-specific fields (macOS adds pw_change,
+    // pw_class, pw_expire), so use zeroed rather than a struct literal.
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut result = std::ptr::null_mut();
     let mut buffer = vec![0_u8; 4096];
 

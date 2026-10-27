@@ -7,6 +7,34 @@ use std::sync::Arc;
 
 use crate::sandbox::error::{SandboxError, SandboxReason};
 
+// Linux-only mount flag constants. On non-Linux platforms these are 0,
+// which makes the mount call fail gracefully (returning an error) rather
+// than compiling to a nonsense value.
+#[cfg(target_os = "linux")]
+const MS_BIND: libc::c_ulong = libc::MS_BIND;
+#[cfg(not(target_os = "linux"))]
+const MS_BIND: libc::c_ulong = 0;
+
+#[cfg(target_os = "linux")]
+const MS_REC: libc::c_ulong = libc::MS_REC;
+#[cfg(not(target_os = "linux"))]
+const MS_REC: libc::c_ulong = 0;
+
+#[cfg(target_os = "linux")]
+const MS_REMOUNT: libc::c_ulong = libc::MS_REMOUNT;
+#[cfg(not(target_os = "linux"))]
+const MS_REMOUNT: libc::c_ulong = 0;
+
+#[cfg(target_os = "linux")]
+const MS_RDONLY: libc::c_ulong = libc::MS_RDONLY;
+#[cfg(not(target_os = "linux"))]
+const MS_RDONLY: libc::c_ulong = 0;
+
+#[cfg(target_os = "linux")]
+const MNT_DETACH: c_int = libc::MNT_DETACH;
+#[cfg(not(target_os = "linux"))]
+const MNT_DETACH: c_int = 0;
+
 pub(crate) type UnmountFn = dyn Fn(&Path, c_int) -> io::Result<()> + Send + Sync + 'static;
 type MountFn = dyn Fn(&MountCall) -> io::Result<()> + Send + Sync + 'static;
 
@@ -104,14 +132,14 @@ impl MountSpec {
                 source: Some(source.display().to_string()),
                 target: target.clone(),
                 fstype: None,
-                flags: libc::MS_BIND | if *recursive { libc::MS_REC } else { 0 },
+                flags: MS_BIND | if *recursive { MS_REC } else { 0 },
                 data: None,
             },
             Self::RemountReadonly { target } => MountCall {
                 source: None,
                 target: target.clone(),
                 fstype: None,
-                flags: libc::MS_BIND | libc::MS_REMOUNT | libc::MS_RDONLY,
+                flags: MS_BIND | MS_REMOUNT | MS_RDONLY,
                 data: None,
             },
         }
@@ -221,7 +249,7 @@ impl MountGuard {
                 Ok(())
             }
             Err(error) if error.raw_os_error() == Some(libc::EBUSY) => {
-                (self.unmount)(&self.target, libc::MNT_DETACH)
+                (self.unmount)(&self.target, MNT_DETACH)
                     .map_err(|lazy_error| cleanup_error(&self.target, "lazy_umount", lazy_error))?;
                 self.active = false;
                 Ok(())
@@ -303,46 +331,69 @@ impl Drop for MountStack {
 }
 
 fn system_mount(call: &MountCall) -> io::Result<()> {
-    let source = optional_cstring(call.source.as_deref())?;
-    let target = path_cstring(&call.target)?;
-    let fstype = optional_cstring(call.fstype.as_deref())?;
-    let data = optional_cstring(call.data.as_deref())?;
+    #[cfg(target_os = "linux")]
+    {
+        let source = optional_cstring(call.source.as_deref())?;
+        let target = path_cstring(&call.target)?;
+        let fstype = optional_cstring(call.fstype.as_deref())?;
+        let data = optional_cstring(call.data.as_deref())?;
 
-    let source_ptr = source
-        .as_ref()
-        .map_or(std::ptr::null(), |value| value.as_ptr());
-    let fstype_ptr = fstype
-        .as_ref()
-        .map_or(std::ptr::null(), |value| value.as_ptr());
-    let data_ptr = data.as_ref().map_or(std::ptr::null(), |value| {
-        value.as_ptr().cast::<libc::c_void>()
-    });
+        let source_ptr = source
+            .as_ref()
+            .map_or(std::ptr::null(), |value| value.as_ptr());
+        let fstype_ptr = fstype
+            .as_ref()
+            .map_or(std::ptr::null(), |value| value.as_ptr());
+        let data_ptr = data.as_ref().map_or(std::ptr::null(), |value| {
+            value.as_ptr().cast::<libc::c_void>()
+        });
 
-    let rc = unsafe {
-        libc::mount(
-            source_ptr,
-            target.as_ptr(),
-            fstype_ptr,
-            call.flags,
-            data_ptr,
-        )
-    };
+        let rc = unsafe {
+            libc::mount(
+                source_ptr,
+                target.as_ptr(),
+                fstype_ptr,
+                call.flags,
+                data_ptr,
+            )
+        };
 
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // mount(2) with namespace isolation is Linux-only.
+        let _ = call;
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "mount namespace isolation is not supported on this platform",
+        ))
     }
 }
 
 fn system_unmount(target: &Path, flags: c_int) -> io::Result<()> {
-    let raw_target = path_cstring(target)?;
-    let rc = unsafe { libc::umount2(raw_target.as_ptr(), flags) };
+    #[cfg(target_os = "linux")]
+    {
+        let raw_target = path_cstring(target)?;
+        let rc = unsafe { libc::umount2(raw_target.as_ptr(), flags) };
 
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (target, flags);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "mount namespace isolation is not supported on this platform",
+        ))
     }
 }
 
@@ -387,7 +438,7 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, Mutex};
 
-    use super::{MountCall, MountExecutor, MountGuard, MountSpec, MountStack};
+    use super::{MS_BIND, MS_REMOUNT, MS_RDONLY, MNT_DETACH, MountCall, MountExecutor, MountGuard, MountSpec, MountStack};
     use crate::sandbox::error::SandboxReason;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -434,13 +485,13 @@ mod tests {
     fn mount_spec_builds_bind_and_remount_syscall_shapes() {
         let bind = MountSpec::bind("/", "/tmp/merged", false).to_mount_call();
         assert_eq!(bind.source.as_deref(), Some("/"));
-        assert_eq!(bind.flags, libc::MS_BIND);
+        assert_eq!(bind.flags, MS_BIND);
 
         let remount = MountSpec::remount_readonly("/tmp/merged").to_mount_call();
         assert_eq!(remount.source, None);
         assert_eq!(
             remount.flags,
-            libc::MS_BIND | libc::MS_REMOUNT | libc::MS_RDONLY
+            MS_BIND | MS_REMOUNT | MS_RDONLY
         );
     }
 
@@ -557,7 +608,7 @@ mod tests {
         let events = events.lock().unwrap();
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].flags, 0);
-        assert_eq!(events[1].flags, libc::MNT_DETACH);
+        assert_eq!(events[1].flags, MNT_DETACH);
     }
 
     #[test]

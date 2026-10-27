@@ -1161,7 +1161,7 @@ impl PersistentPty {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             let mut tv = libc::timeval {
                 tv_sec: remaining.as_secs().min(1) as libc::c_long,
-                tv_usec: (remaining.subsec_micros() % 1_000_000) as libc::c_long,
+                tv_usec: (remaining.subsec_micros() % 1_000_000) as _,
             };
 
             let sel = unsafe {
@@ -1175,7 +1175,7 @@ impl PersistentPty {
             };
 
             if sel < 0 {
-                let errno = unsafe { *libc::__errno_location() };
+                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EINVAL);
                 if errno == libc::EINTR {
                     continue;
                 }
@@ -1765,7 +1765,7 @@ impl PersistentPty {
             };
 
             if sel < 0 {
-                let errno = unsafe { *libc::__errno_location() };
+                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EINVAL);
                 if errno == libc::EINTR {
                     continue;
                 }
@@ -5164,7 +5164,7 @@ fn read_byte(stdin_fd: libc::c_int) -> Option<u8> {
         match n {
             1 => return Some(byte[0]),
             -1 => {
-                let errno = unsafe { *libc::__errno_location() };
+                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EINVAL);
                 if errno == libc::EINTR {
                     continue;
                 }
@@ -5953,7 +5953,7 @@ impl Drop for PersistentPty {
 
 fn child_main(slave_fd: RawFd, control_write_fd: RawFd, rcfile_path: &str, cwd: &str) -> ! {
     unsafe { libc::setsid() };
-    unsafe { libc::ioctl(slave_fd, libc::TIOCSCTTY, 0) };
+    unsafe { libc::ioctl(slave_fd, libc::TIOCSCTTY as libc::c_ulong, 0) };
 
     let _ = dup2(slave_fd, libc::STDIN_FILENO);
     let _ = dup2(slave_fd, libc::STDOUT_FILENO);
@@ -10074,8 +10074,8 @@ echo \"AFTER:${{PAGER+x}}:${{SYSTEMD_PAGER+x}}:${{GIT_PAGER+x}}\""
                 &mut master_fd,
                 &mut slave_fd,
                 std::ptr::null_mut(),
-                std::ptr::null(),
-                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
             )
         };
         assert_eq!(rc, 0, "openpty failed: {}", std::io::Error::last_os_error());

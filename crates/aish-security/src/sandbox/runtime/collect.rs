@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(target_os = "linux")]
 use std::ffi::CString;
 use std::fs;
+#[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Component, Path, PathBuf};
@@ -313,20 +315,30 @@ fn is_whiteout_inode(path: &Path) -> Result<bool, SandboxError> {
 }
 
 fn is_opaque_dir(path: &Path) -> bool {
-    let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) else {
-        return false;
-    };
-    let name = CString::new("trusted.overlay.opaque").expect("static xattr name");
-    let mut buf = [0_u8; 8];
-    let read = unsafe {
-        libc::lgetxattr(
-            c_path.as_ptr(),
-            name.as_ptr(),
-            buf.as_mut_ptr().cast(),
-            buf.len(),
-        )
-    };
-    read > 0 && buf[0] == b'y'
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) else {
+            return false;
+        };
+        let name = CString::new("trusted.overlay.opaque").expect("static xattr name");
+        let mut buf = [0_u8; 8];
+        let read = unsafe {
+            libc::lgetxattr(
+                c_path.as_ptr(),
+                name.as_ptr(),
+                buf.as_mut_ptr().cast(),
+                buf.len(),
+            )
+        };
+        read > 0 && buf[0] == b'y'
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // OverlayFS is Linux-only; there are no opaque dirs on other
+        // platforms.
+        let _ = path;
+        false
+    }
 }
 
 fn whiteout_target_from_name(rel_path: &Path) -> Option<PathBuf> {

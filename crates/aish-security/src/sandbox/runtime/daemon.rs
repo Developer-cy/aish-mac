@@ -1,6 +1,8 @@
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::fd::FromRawFd;
+#[cfg(target_os = "linux")]
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -294,36 +296,49 @@ fn fake_result_for(_request: &SandboxRunRequest) -> SandboxResult {
 }
 
 fn peer_credentials(stream: &UnixStream) -> Result<RequestIdentity, SandboxError> {
-    let fd = stream.as_raw_fd();
-    let mut cred = libc::ucred {
-        pid: 0,
-        uid: 0,
-        gid: 0,
-    };
-    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    #[cfg(target_os = "linux")]
+    {
+        let fd = stream.as_raw_fd();
+        let mut cred = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
 
-    let rc = unsafe {
-        libc::getsockopt(
-            fd,
-            libc::SOL_SOCKET,
-            libc::SO_PEERCRED,
-            &mut cred as *mut _ as *mut libc::c_void,
-            &mut len,
-        )
-    };
+        let rc = unsafe {
+            libc::getsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                &mut cred as *mut _ as *mut libc::c_void,
+                &mut len,
+            )
+        };
 
-    if rc != 0 {
-        return Err(SandboxError::with_details(
-            SandboxReason::SandboxUnavailable,
-            std::io::Error::last_os_error().to_string(),
-        ));
+        if rc != 0 {
+            return Err(SandboxError::with_details(
+                SandboxReason::SandboxUnavailable,
+                std::io::Error::last_os_error().to_string(),
+            ));
+        }
+
+        Ok(RequestIdentity::from_peer_credentials(
+            cred.pid as u32,
+            cred.uid,
+            cred.gid,
+        ))
     }
-
-    Ok(RequestIdentity::from_peer_credentials(
-        cred.pid as u32,
-        cred.uid,
-        cred.gid,
-    ))
+    #[cfg(not(target_os = "linux"))]
+    {
+        // SO_PEERCRED/ucred is Linux-only. The sandbox is unavailable on
+        // this platform; the caller degrades via SandboxUnavailable.
+        let _ = stream;
+        Err(SandboxError::with_details(
+            SandboxReason::SandboxUnavailable,
+            "peer credentials (SO_PEERCRED) are not supported on this platform".to_string(),
+        ))
+    }
 }
 
 fn log_daemon_started(options: &SandboxDaemonOptions, socket_activated: bool) {

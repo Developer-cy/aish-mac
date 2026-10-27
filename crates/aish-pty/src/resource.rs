@@ -7,7 +7,9 @@
 //! picture of what one live session costs, including tool subprocesses.
 
 use std::collections::HashMap;
-use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::fd::AsRawFd;
+#[cfg(target_os = "linux")]
+use std::os::fd::FromRawFd;
 use std::path::Path;
 use std::time::Instant;
 
@@ -268,38 +270,56 @@ struct PidFd(std::os::fd::OwnedFd);
 /// `pidfd_open(2)`. `None` when the syscall is unavailable or the process
 /// is already gone.
 fn pidfd_open(pid: u32) -> Option<PidFd> {
-    const SYS_PIDFD_OPEN: libc::c_long = 434;
-    // SAFETY: [Category 8 — FFI] `syscall(SYS_pidfd_open, pid, 0)` — a
-    // direct Linux syscall; flags must be 0 per the man page. Returns a
-    // new fd (>= 0) or -1 with errno.
-    let fd = unsafe { libc::syscall(SYS_PIDFD_OPEN, pid as libc::pid_t, 0) };
-    if fd < 0 {
-        return None;
+    #[cfg(target_os = "linux")]
+    {
+        const SYS_PIDFD_OPEN: libc::c_long = 434;
+        // SAFETY: [Category 8 — FFI] `syscall(SYS_pidfd_open, pid, 0)` — a
+        // direct Linux syscall; flags must be 0 per the man page. Returns a
+        // new fd (>= 0) or -1 with errno.
+        let fd = unsafe { libc::syscall(SYS_PIDFD_OPEN, pid as libc::pid_t, 0) };
+        if fd < 0 {
+            return None;
+        }
+        let fd = fd as libc::c_int;
+        // SAFETY: [Category 8 — FFI] fd is a valid, owned descriptor returned
+        // by the syscall above.
+        Some(PidFd(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) }))
     }
-    let fd = fd as libc::c_int;
-    // SAFETY: [Category 8 — FFI] fd is a valid, owned descriptor returned
-    // by the syscall above.
-    Some(PidFd(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) }))
+    #[cfg(not(target_os = "linux"))]
+    {
+        // pidfd_open is a Linux-only syscall. On other platforms the
+        // caller falls back to plain kill.
+        let _ = pid;
+        None
+    }
 }
 
 /// `pidfd_send_signal(2)`. `None` when the syscall is unavailable; a
 /// `Some(())` result whose signal failed is indistinguishable from success
 /// only in that the target had already exited, which is fine here.
 fn pidfd_send_signal(fd: &PidFd, sig: libc::c_int) -> Option<()> {
-    const SYS_PIDFD_SEND_SIGNAL: libc::c_long = 424;
-    // SAFETY: [Category 8 — FFI] `syscall(SYS_pidfd_send_signal, fd, sig,
-    // NULL, 0)` — a direct Linux syscall with the reserved info pointer
-    // NULL and flags 0.
-    unsafe {
-        libc::syscall(
-            SYS_PIDFD_SEND_SIGNAL,
-            fd.0.as_raw_fd(),
-            sig,
-            std::ptr::null::<libc::siginfo_t>(),
-            0,
-        ) >= 0
+    #[cfg(target_os = "linux")]
+    {
+        const SYS_PIDFD_SEND_SIGNAL: libc::c_long = 424;
+        // SAFETY: [Category 8 — FFI] `syscall(SYS_pidfd_send_signal, fd, sig,
+        // NULL, 0)` — a direct Linux syscall with the reserved info pointer
+        // NULL and flags 0.
+        unsafe {
+            libc::syscall(
+                SYS_PIDFD_SEND_SIGNAL,
+                fd.0.as_raw_fd(),
+                sig,
+                std::ptr::null::<libc::siginfo_t>(),
+                0,
+            ) >= 0
+        }
+        .then_some(())
     }
-    .then_some(())
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (fd, sig);
+        None
+    }
 }
 
 /// The pid that the fd pins, read from the fd's `fdinfo`. `None` when the

@@ -121,6 +121,9 @@ pub fn create_stdio_transport(
                 // orphans the whole server tree; an MCP server with no client
                 // is dead weight holding resources. The ordinary exit path
                 // still sends SIGTERM then SIGKILL through `close()`.
+                // `PR_SET_PDEATHSIG` is Linux-only; on other platforms the
+                // explicit SIGTERM/SIGKILL path handles cleanup.
+                #[cfg(target_os = "linux")]
                 if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
                     return Err(io::Error::last_os_error());
                 }

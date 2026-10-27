@@ -4,14 +4,17 @@
 
 ---
 
-# AISH
+# AISH for macOS
 
 让 Shell 拥有思考力，让运维由此进化
 
+> **本仓库基于 [AI-Shell-Team/aish](https://github.com/AI-Shell-Team/aish) 原始项目适配 macOS 平台而来。**
+> macOS 适配的详细说明请参阅 [docs/macOS_ADAPTATION.md](docs/macOS_ADAPTATION.md)。
+
 [![Official Website](https://img.shields.io/badge/官网-aishell.ai-blue.svg)](https://www.aishell.ai)
-[![GitHub](https://img.shields.io/badge/GitHub-AI--Shell--Team/aish-black.svg)](https://github.com/AI-Shell-Team/aish/)
+[![GitHub](https://img.shields.io/badge/GitHub-Developer--cy/aish--mac-black.svg)](https://github.com/Developer-cy/aish-mac)
 [![Rust Version](https://img.shields.io/badge/rust-1.89+-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)](#)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 ![](./docs/images/demo_show.gif)
@@ -70,20 +73,29 @@
 
 ### 1) 安装并启动
 
-#### 方式一：一键安装（推荐）
+#### 方式一：源码编译安装（推荐）
 
 ```bash
-curl -fsSL https://www.aishell.ai/repo/install.sh | bash
+# 克隆仓库
+git clone git@github.com:Developer-cy/aish-mac.git
+cd aish-mac
+
+# 安装 Rust 工具链（如已安装可跳过）
+brew install rustup
+export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
+
+# 编译 Release 版
+cargo build --release -p aish-cli
+
+# 安装到 PATH
+cp target/release/aish ~/.local/bin/aish
+chmod +x ~/.local/bin/aish
 ```
 
-#### 方式二：手动安装二进制 bundle
-
-先从官方发布目录下载对应架构的 `aish-<version>-linux-<arch>.tar.gz`，然后执行：
+#### 方式二：直接运行（开发用）
 
 ```bash
-tar -xzf aish-<version>-linux-<arch>.tar.gz
-cd aish-<version>-linux-<arch>
-sudo ./install.sh
+cargo run --bin aish
 ```
 
 然后启动：
@@ -115,13 +127,20 @@ aish> ;解释一下这个命令：tar -czf a.tgz ./dir
 
 ## 安装
 
-### Linux 二进制 Bundle
+### 源码编译安装（macOS）
 
 ```bash
-curl -fsSL https://www.aishell.ai/repo/install.sh | bash
-```
+# 克隆仓库
+git clone git@github.com:Developer-cy/aish-mac.git
+cd aish-mac
 
-该安装器会解析最新稳定版本，下载与你当前架构匹配的 bundle，并把 `aish`、`aish-sandbox` 和 `aish-uninstall` 安装到 `/usr/local/bin`。
+# 编译 Release 版
+cargo build --release -p aish-cli
+
+# 安装到 PATH（~/.local/bin 默认已在 PATH 中）
+cp target/release/aish ~/.local/bin/aish
+chmod +x ~/.local/bin/aish
+```
 
 ### 从源码运行（开发/试用）
 
@@ -133,19 +152,13 @@ cargo run --bin aish
 
 ## 卸载
 
-卸载（保留配置文件）：
+删除二进制：
 
 ```bash
-sudo aish-uninstall
+rm ~/.local/bin/aish
 ```
 
-彻底卸载（同时删除系统级安全策略）：
-
-```bash
-sudo aish-uninstall --purge-config
-```
-
-可选：清理用户级配置（会清空模型/API Key 等）：
+可选：清理配置文件（会清空模型/API Key 等）：
 
 ```bash
 rm -rf ~/.config/aish
@@ -253,9 +266,13 @@ AI Shell 仅对 **AI 生成并准备执行** 的命令进行安全评估。
 策略文件按以下顺序解析：
 1. `~/.config/aish/security_policy.yaml`（用户级；若不存在会自动生成模板）
 
-### 沙箱预跑（可选，推荐生产启用）
+### 沙箱预跑（可选，仅 Linux）
 
-默认策略 **未开启** 沙箱预跑。启用方法：
+默认策略 **未开启** 沙箱预跑。沙箱使用 Linux 挂载命名空间隔离（`unshare(CLONE_NEWNS)`），**macOS 上不可用**。
+
+在 macOS 上，沙箱会返回 `SandboxUnavailable`，agent 交互会自动降级到策略规则评估（`sandbox_off_action`：BLOCK/CONFIRM/ALLOW）。安全性评估仍通过 glob 匹配的策略规则工作。
+
+在 Linux 上启用：
 
 1) 在安全策略中设置：
 
@@ -271,7 +288,6 @@ sudo systemctl enable --now aish-sandbox.socket
 ```
 
 Socket 默认：`/run/aish/sandbox.sock`。
-沙箱不可用时，会按策略里的 `sandbox_off_action`（BLOCK/CONFIRM/ALLOW）兜底。
 
 ---
 
@@ -303,6 +319,7 @@ Skills 用于扩展 AI 的专用知识与工作流，支持热加载与覆盖优
 
 - 配置说明：`CONFIGURATION.md`
 - 快速入门：`QUICKSTART.md`
+- macOS 适配说明：`docs/macOS_ADAPTATION.md`
 - 命令纠错机制：`docs/command-interaction-correction.md`
 
 ---
@@ -312,12 +329,10 @@ Skills 用于扩展 AI 的专用知识与工作流，支持热加载与覆盖优
 | 链接 | 说明 |
 |------|------|
 | [官方网站](https://www.aishell.ai) | 项目官网与更多信息 |
-| [GitHub 仓库](https://github.com/AI-Shell-Team/aish/) | 源码与问题反馈 |
-| [GitHub Issues](https://github.com/AI-Shell-Team/aish/issues) | Bug 报告 |
-| [GitHub Discussions](https://github.com/AI-Shell-Team/aish/discussions) | 社区讨论 |
+| [GitHub 仓库](https://github.com/Developer-cy/aish-mac) | macOS 适配源码 |
+| [原始仓库](https://github.com/AI-Shell-Team/aish/) | 原始 Linux 项目 |
+| [GitHub Issues](https://github.com/Developer-cy/aish-mac/issues) | Bug 报告 |
 | [Discord](https://discord.com/invite/Pw2mjZt3) | 加入社区 |
-| [LINUX DO 社区](https://linux.do) | 友链 |
-
 
 > 如果 AISH 对你有帮助，欢迎给项目点一个 Star ⭐  
 > 这会帮助更多人发现它，也是我们持续迭代的重要动力。
@@ -328,26 +343,17 @@ Skills 用于扩展 AI 的专用知识与工作流，支持热加载与覆盖优
 
 ## 开发与测试
 
-当前仓库已经是使用 Rust 完全重写后的 aish，采用 Cargo workspace 组织，共 14 个 crate。
+本仓库是基于 [AI-Shell-Team/aish](https://github.com/AI-Shell-Team/aish) 适配 macOS 的 Rust 实现。
 
 ```bash
-# 编译
-cargo build --release
+# 编译（Release）
+cargo build --release -p aish-cli
 
 # 运行测试
 cargo test --workspace
 
-# 发布脚本冒烟测试
-./packaging/tests/release_scripts_smoke.sh
-
-# 运行
-./target/release/aish
-
-# 测试
-cargo test
-
 # 代码检查
-cargo clippy
+cargo clippy --all-targets -- -D warnings
 ```
 
 #### 架构（14 个 crate）

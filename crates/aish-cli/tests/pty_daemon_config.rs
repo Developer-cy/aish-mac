@@ -66,8 +66,8 @@ impl PtyProcess {
                 &mut master_fd,
                 &mut slave_fd,
                 std::ptr::null_mut(),
-                std::ptr::null(),
-                &size,
+                std::ptr::null_mut(),
+                &raw mut size,
             );
             assert_eq!(result, 0, "openpty: {}", std::io::Error::last_os_error());
             (master_fd, slave_fd)

@@ -311,7 +311,7 @@ impl PtyExecutor {
             };
 
             if select_result < 0 {
-                let errno = unsafe { *libc::__errno_location() };
+                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EINVAL);
                 if errno == libc::EINTR {
                     child_exited = check_child_exit(child_pid, &mut exit_code);
                     continue;
@@ -503,9 +503,7 @@ impl PtyExecutor {
             };
 
             if select_result < 0 {
-                // SAFETY: __errno_location returns a pointer to thread-local
-                // errno; reading it is safe.
-                let errno = unsafe { *libc::__errno_location() };
+                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EINVAL);
                 if errno == libc::EINTR {
                     child_exited = check_child_exit(child_pid, &mut exit_code);
                     continue;
@@ -713,7 +711,7 @@ fn child_main(
     // a safe ioctl that only sets the controlling terminal; the arg 0 means
     // "steal" is not requested.
     unsafe {
-        libc::ioctl(slave_fd, libc::TIOCSCTTY, 0);
+        libc::ioctl(slave_fd, libc::TIOCSCTTY as libc::c_ulong, 0);
     }
 
     // Redirect stdin/stdout to the slave PTY.

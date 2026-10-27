@@ -4,14 +4,17 @@ English | [简体中文](README_CN.md)
 
 ---
 
-# AISH
+# AISH for macOS
 
 Empower the Shell to think. Evolve Operations.
 
+> **本仓库基于 [AI-Shell-Team/aish](https://github.com/AI-Shell-Team/aish) 原始项目适配 macOS 平台而来。**
+> macOS 适配的详细说明请参阅 [docs/macOS_ADAPTATION.md](docs/macOS_ADAPTATION.md)。
+
 [![Official Website](https://img.shields.io/badge/Website-aishell.ai-blue.svg)](https://www.aishell.ai)
-[![GitHub](https://img.shields.io/badge/GitHub-AI--Shell--Team/aish-black.svg)](https://github.com/AI-Shell-Team/aish/)
+[![GitHub](https://img.shields.io/badge/GitHub-Developer--cy/aish--mac-black.svg)](https://github.com/Developer-cy/aish-mac)
 [![Rust Version](https://img.shields.io/badge/rust-1.89+-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)](#)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 ![](./docs/images/demo_show.gif)
@@ -75,20 +78,29 @@ Empower the Shell to think. Evolve Operations.
 
 ### 1) Install and Launch
 
-#### Option 1: One-line install (Recommended)
+#### Option 1: Install from Source (Recommended)
 
 ```bash
-curl -fsSL https://www.aishell.ai/repo/install.sh | bash
+# 克隆仓库
+git clone git@github.com:Developer-cy/aish-mac.git
+cd aish-mac
+
+# 安装 Rust 工具链（如已安装可跳过）
+brew install rustup
+export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
+
+# 编译 Release 版
+cargo build --release -p aish-cli
+
+# 安装到 PATH
+cp target/release/aish ~/.local/bin/aish
+chmod +x ~/.local/bin/aish
 ```
 
-#### Option 2: Manual bundle install
-
-Download the matching `aish-<version>-linux-<arch>.tar.gz` bundle from the official release directory, then run:
+#### Option 2: Direct Run (Development)
 
 ```bash
-tar -xzf aish-<version>-linux-<arch>.tar.gz
-cd aish-<version>-linux-<arch>
-sudo ./install.sh
+cargo run --bin aish
 ```
 
 Then launch:
@@ -120,13 +132,20 @@ aish> ;explain this command: tar -czf a.tgz ./dir
 
 ## Installation
 
-### Linux Release Bundle
+### Install from Source (macOS)
 
 ```bash
-curl -fsSL https://www.aishell.ai/repo/install.sh | bash
-```
+# 克隆仓库
+git clone git@github.com:Developer-cy/aish-mac.git
+cd aish-mac
 
-The installer resolves the latest stable version, downloads the matching bundle for your architecture, and installs `aish`, `aish-sandbox`, and `aish-uninstall` into `/usr/local/bin`.
+# 编译 Release 版
+cargo build --release -p aish-cli
+
+# 安装到 PATH（~/.local/bin 默认已在 PATH 中）
+cp target/release/aish ~/.local/bin/aish
+chmod +x ~/.local/bin/aish
+```
 
 ### Run from Source (Development/Trial)
 
@@ -138,19 +157,13 @@ cargo run --bin aish
 
 ## Uninstallation
 
-Uninstall (keep configuration files):
+Remove the binary:
 
 ```bash
-sudo aish-uninstall
+rm ~/.local/bin/aish
 ```
 
-Complete uninstallation (also removes system-level security policies):
-
-```bash
-sudo aish-uninstall --purge-config
-```
-
-Optional: Clean user-level configuration (will clear model/API keys etc.):
+Optional: Clean configuration files (will clear model/API keys etc.):
 
 ```bash
 rm -rf ~/.config/aish
@@ -258,9 +271,13 @@ AI Shell only performs security assessment on **AI-generated and ready-to-execut
 Policy files are resolved in this order:
 1. `~/.config/aish/security_policy.yaml` (user-level; auto-generated template if not exists)
 
-### Sandbox Pre-run (Optional, Recommended for Production)
+### Sandbox Pre-run (Optional, Linux Only)
 
-Default policy has sandbox pre-run **disabled**. To enable:
+Default policy has sandbox pre-run **disabled**. The sandbox uses Linux mount namespace isolation (`unshare(CLONE_NEWNS)`) and is **not available on macOS**.
+
+On macOS, the sandbox will return `SandboxUnavailable` and agent interactions will fall back to policy rule evaluation (`sandbox_off_action`: BLOCK/CONFIRM/ALLOW). Security assessment still works via glob-matched policy rules.
+
+To enable on Linux:
 
 1) Set in security policy:
 
@@ -276,7 +293,6 @@ sudo systemctl enable --now aish-sandbox.socket
 ```
 
 Default socket: `/run/aish/sandbox.sock`.
-When sandbox is unavailable, it will fallback according to `sandbox_off_action` (BLOCK/CONFIRM/ALLOW) in policy.
 
 ---
 
@@ -308,6 +324,7 @@ Recommendations:
 
 - Configuration Guide: `CONFIGURATION.md`
 - Quick Start: `QUICKSTART.md`
+- macOS Adaptation Guide: `docs/macOS_ADAPTATION.md`
 - Command Correction Mechanism: `docs/command-interaction-correction.md`
 
 ---
@@ -317,35 +334,30 @@ Recommendations:
 | Link | Description |
 |------|-------------|
 | [Official Website](https://www.aishell.ai) | Project homepage and more information |
-| [GitHub Repository](https://github.com/AI-Shell-Team/aish/) | Source code and issue tracking |
-| [GitHub Issues](https://github.com/AI-Shell-Team/aish/issues) | Bug reports |
-| [GitHub Discussions](https://github.com/AI-Shell-Team/aish/discussions) | Community discussions |
+| [GitHub Repository](https://github.com/Developer-cy/aish-mac) | macOS adaptation source code |
+| [Original Repository](https://github.com/AI-Shell-Team/aish/) | Original Linux project |
+| [GitHub Issues](https://github.com/Developer-cy/aish-mac/issues) | Bug reports |
 | [Discord](https://discord.com/invite/Pw2mjZt3) | Join the community |
-| [LINUX DO](https://linux.do) | Community friend link |
-
 
 > If you find AISH helpful, please consider giving us a Star ⭐
->It helps more people discover the project and keeps us motivated to continue improving it.
+> It helps more people discover the project and keeps us motivated to continue improving it.
 
 
 ---
 
 ## Development & Testing
 
-This repository is now the Rust implementation of aish. The remaining Python scripts under `packaging/scripts/` are release automation helpers and are covered by shell smoke tests.
+This repository is the Rust implementation of aish, adapted for macOS. The original project is [AI-Shell-Team/aish](https://github.com/AI-Shell-Team/aish).
 
 ```bash
-# Build
-cargo build --release
+# Build (Release)
+cargo build --release -p aish-cli
 
 # Run Rust tests
 cargo test --workspace
 
 # Lint Rust code
 cargo clippy --all-targets -- -D warnings
-
-# Run packaging release script smoke tests
-./packaging/tests/release_scripts_smoke.sh
 ```
 
 #### Architecture (14 crates)
